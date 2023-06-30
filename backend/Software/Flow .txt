@@ -1,0 +1,180 @@
+###############################  report directory creation ########################################## 
+set _LOG_PATH     logs_${RUN_TAG}
+if {$REP_DIR} {
+redirect ./${_LOG_PATH}/rep_dir_gen_log {source  -verbose ./common_flow/rep_dir_gen.tcl}
+}
+
+##############################################################################
+## Preset global variables and attributes
+##############################################################################
+if {$GLOBAL_VAR} {
+redirect ./${_LOG_PATH}/global_var_log {source  -verbose ./common_flow/global_var.tcl}
+}
+################# LOAD DESIGN ###################################################
+set_db source_verbose true
+set_db information_level 9
+if {$DFT} {
+redirect ./${_LOG_PATH}/dft_cons_var_log {source -verbose -echo $DFT_CONS_VAR}
+}
+
+redirect ./${_LOG_PATH}/mmmc_log {read_mmmc -design ${DESIGN} ${MMMC_FILE}}
+
+
+check_library >  ./${_REPORTS_PATH}/initial_reports/${DESIGN}_check_library.rpt
+
+redirect ./${_LOG_PATH}/read_hdl_log {read_hdl -sv -f ${rtl_file_list} }
+
+set STAGE elab 
+redirect ./${_LOG_PATH}/elab_log {elaborate ${DESIGN}} ;  # check log on the go for unresolved
+redirect ./${_LOG_PATH}/timestamp -append {source  -verbose ./common_flow/timestamp.tcl}
+check_design -unresolved
+set_top_module $DESIGN
+init_design 
+current_design $DESIGN
+#redirect ./${_LOG_PATH}/uniquify.rpt {uniquify -verbsose $DESIGN} ; # CHECK 
+puts "The number of exceptions is [llength [vfind /designs/$DESIGN -exception *]]" 
+
+
+if {"elab" == $STAGE } {
+write_db -all_root_attributes ./${_OUTPUTS_PATH}/db/${DESIGN}\_${STAGE}_elab_mv.db
+write_design -base_name ./${_OUTPUTS_PATH}/${STAGE}/${DESIGN}\_${STAGE}
+}
+
+report_gates
+write_netlist > elab.v
+write_db ./elab.db
+check_design -all > ./${_REPORTS_PATH}/initial_reports/${DESIGN}_check_design.rpt
+report_clocks > ./${_REPORTS_PATH}/initial_reports/${DESIGN}_report_clocks.rpt 
+report_clocks -generated > ./${_REPORTS_PATH}/initial_reports/${DESIGN}_report_clocks_gen.rpt 
+check_timing_intent -verbose >  ./${_REPORTS_PATH}/initial_reports/${DESIGN}_check_timing.rpt 
+source ./common_flow/sanity_ports_pins.tcl 
+set_db drc_max_fanout_first true
+######################### Power opt ##################################
+if {$POWER_OPT} {
+redirect ./${_LOG_PATH}/power_opt_log {source  -verbose ./common_flow/power_opt.tcl}
+}
+
+if {$DONT_USE} {
+redirect ./${_LOG_PATH}/dont_use_list {source  -verbose ./common_flow/dont_use.tcl}
+}
+
+if {$PRESERVE} {
+redirect ./${_LOG_PATH}/preserve_log {source  -verbose ./common_flow/preserve.tcl }
+}
+
+########################## Constant Tie low ###############################
+set_db [get_db modules ] .boundary_opto false
+set_db use_tiehilo_for_const unique
+sizeof_collection [get_db modules]
+
+##############################################################################
+## Synthesizing to generic 
+##############################################################################
+#set_db enable_data_check true
+redirect ./${_LOG_PATH}/mem_usage_log -append { source -quiet  ./common_flow/mem_use.tcl }
+
+set_db syn_generic_effort $GEN_EFF
+set_db syn_map_effort $MAP_OPT_EFF
+set_db syn_opt_effort $MAP_OPT_EFF
+
+
+set STAGE generic
+syn_generic
+
+report_gates
+write_netlist > generic.v
+write_db ./generic.db
+redirect ./${_LOG_PATH}/mem_usage_log -append { source -quiet ./common_flow/mem_use.tcl } 
+
+redirect ./${_LOG_PATH}/${DESIGN}_${STAGE}__log {syn_generic}
+
+redirect ./${_LOG_PATH}/timestamp -append  {source  -verbose ./common_flow/timestamp.tcl}
+
+if {$GEN_REP} {
+redirect ./${_LOG_PATH}/${STAGE}_report_log {source  -verbose ./common_flow/report_generation.tcl}
+}
+###############################################################################
+## Synthesizing to gates
+
+set_top_module [get_db current_design]
+get_db current_design
+
+set STAGE mapped
+syn_map
+
+report_gates
+write_netlist > ./sdc300_chip-Map/mapped.v
+write_db ./sdc300_chip-Map/mapped.db
+redirect ./${_LOG_PATH}/mem_usage_log -append { source  -quiet ./common_flow/mem_use.tcl } 
+
+redirect ./${_LOG_PATH}/${DESIGN}_${STAGE}_log {syn_map}
+
+redirect ./${_LOG_PATH}/timestamp -append  {source  -verbose ./common_flow/timestamp.tcl}
+
+if {$MAP_REP} {
+redirect ./${_LOG_PATH}/${STAGE}_report_log {source  -verbose ./common_flow/report_generation.tcl}
+}
+#foreach view [get_db analysis_views -if {.is_setup == true}] { 
+#define_cost_group -name NCO -weight 2 -design $DESIGN
+#path_group -from [get_db insts *sample_slot_g_reg*] -to [get_db insts *NCOs[*].u_tx_nco/*] -name NCO -group NCO -view $view
+#} 
+###############################################################################
+## Optimize Netlist
+###############################################################################
+
+if {$PATH_GROUPS} {
+redirect ./${_LOG_PATH}/path_grp_opt_log {source  -verbose ./common_flow/path_groups.tcl}
+}
+
+
+set_top_module [get_db current_design]
+set STAGE opt
+syn_opt
+
+report_gates
+write_netlist > ./sdc300_chip-Map/opt.v
+write_db ./sdc300_chip-Map/opt.db
+redirect ./${_LOG_PATH}/mem_usage_log -append { source  -quiet ./common_flow/mem_use.tcl } 
+
+redirect ./${_LOG_PATH}/${DESIGN}_${STAGE}_log {syn_opt}
+
+redirect ./${_LOG_PATH}/timestamp -append  {source  -verbose ./common_flow/timestamp.tcl}
+
+if {$OPT_REP} {
+redirect ./${_LOG_PATH}/${STAGE}_report_log {source  -verbose ./common_flow/report_generation.tcl}
+if {[file exists ${SPECIAL_OPT_REPORT}]} {
+redirect ./${_LOG_PATH}/${STAGE}_special_report {source -quiet -verbose ${SPECIAL_OPT_REPORT} }
+}
+}
+set_top_module [get_db current_design]
+
+if {$OPT_INC} {
+set STAGE opt_inc
+syn_opt -inc
+report_gates
+}
+
+write_netlist > opt_inc.v
+write_db ./opt_inc.db
+redirect ./${_LOG_PATH}/mem_usage_log -append { source  -quiet ./common_flow/mem_use.tcl } 
+
+redirect ./${_LOG_PATH}/${DESIGN}_${STAGE}_log {syn_opt}
+
+redirect ./${_LOG_PATH}/timestamp -append  {source  -verbose ./common_flow/timestamp.tcl}
+
+if {$OPT_REP} {
+redirect ./${_LOG_PATH}/${STAGE}_report_log {source  -verbose ./common_flow/report_generation.tcl}
+if {[file exists ${SPECIAL_OPT_REPORT}]} {
+redirect ./${_LOG_PATH}/${STAGE}_special_report {source -quiet -verbose ${SPECIAL_OPT_REPORT} }
+}
+}
+
+
+
+puts "Final Runtime & Memory."
+time_info FINAL
+puts "============================"
+puts "Synthesis Finished ........."
+puts "============================"
+
+file copy [get_db / .stdout_log] ${_LOG_PATH}/.

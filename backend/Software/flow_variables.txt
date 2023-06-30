@@ -1,0 +1,61 @@
+#set IP_DESIGN_DIR  "<rtl dir/CWP/>"
+if {[file exists /proc/cpuinfo]} {
+  sh grep "model name" /proc/cpuinfo
+  sh grep "cpu MHz"    /proc/cpuinfo
+}
+puts "Hostname : [info hostname]"
+
+set NUM_CPU 8 
+set cwd [pwd] ; # setting current work directory ..
+#set RF_DESIGN_DIR "/data/sigmasense/sdc300/PD/chaya_PNR/Chaya/chaya_SDC300/genus/rtl_changes_29_01/design"
+set RF_DESIGN_DIR "/data/sigmasense/sdc300/Synth/subash/HerculusB/chipRtl1p5/design"
+set DSP_ROOT "/data/sigmasense/sdc300/IP_library/dsp_top/herculesB_eco"
+set IQ_MAGPHASE_ROOT "/data/sigmasense/sdc300/IP_library/IQ_MagPhase/0.8.3-24Dec"
+set STD_LIB_ROOT $RF_DESIGN_DIR/std_lib_rev4
+set MEMORY_ROOT "/data/sigmasense/sdc300/IP_library/memories/arm_crn40ulp/2023_01_23"
+set RF_TOP "$RF_DESIGN_DIR/../"
+
+
+set RUN_TAG sdc300_chip      						          ; # can be changed as required
+set DESIGN sdc300_chip
+
+
+
+#### design files ##########################
+set rtl_file_list "rtl/sdc300_chip.f" ; # please add latest rtl file list
+set SDC_FILE  "rtl/final.sdc" ; # add sdc file along with full path 
+#set SDC_TEST     "rtl/sdc300_chip_test.sdc"
+# set MMMC_FILE "/data/sigmasense/sdc300/Synth/sathyavathi/sdc300/sdc300_chip/sdc300_chip_chipRtl0p51_synth0p51_02_11_2022_1/mmmc.tcl"
+set MMMC_FILE "rtl/ccs_mmmc.03.03.23.tcl"
+
+
+
+
+# set SDC_FILE "/projects/crn40ulp_5x1z1u/SDC300/work/manuv/pompey/trunk/digital/design/ip/top/syn/constraint/pompey_chip_top.sdc";
+#set DIG_TOP_SDC "/projects/crn40ulp_5x1z1u/SDC300/work/sathyava/syn_dig_top/dig_top_sdc_pd_24_09_22/outputs_dig_top01/opt_pd_data/dig_top_g2i.func.sdc"
+
+
+set HARD_REG 0; # enable to keep partition as hard region in floorplan
+# set HARD_REG_BLOCKS [list dsp_tx decimate_filter_multi_clock ]
+
+
+set REP_DIR 1;
+set GLOBAL_VAR 1;
+set POWER_OPT 1;
+set ICG 1;
+set MBIT 0;
+set DONT_USE 1;
+set PRESERVE 1;
+set PATH_GROUPS 1;
+set TNS_OPT 1;
+set GEN_REP 1;
+set MAP_REP 1;
+set OPT_REP 1;
+set AUTO_UG none; # update as required - none/both
+
+set GEN_EFF medium
+set MAP_OPT_EFF high
+set OPT_INC 1; # if incremental synthesis required 0/1
+
+set DFT 0;
+
